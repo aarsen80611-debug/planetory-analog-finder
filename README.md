@@ -123,10 +123,7 @@ The application evaluates similarity based on an 8-dimensional space of environm
 ## 🚀 Getting Started
 
 ### Quick Run
-Since this is a client-side JavaScript application, you can launch it instantly:
-1. Clone the repository: `git clone https://github.com`
-2. Spin up a quick local web server using Python: `python -m http.server 8000`
-3. Open `http://localhost:8000` in your browser.
+Follow this link https://aarsen80611-debug.github.io/planetory-analog-finder/
 
 ---
 
