@@ -1,0 +1,906 @@
+<title>Planetary Analog Finder</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: fixed control rail on the left (stacks on top on phones), working area on the right. Single dark look. */
+:root {
+  --bg: #0B0E14; --panel: #11151E; --panel-2: #161B26; --line: #1F2533; --line-strong: #2A3245;
+  --text: #E6EAF2; --muted: #8A94A8; --faint: #5D667A; --accent: #5B8CFF; --accent-soft: rgba(91,140,255,.16);
+  --earth: #4C8DF6; --mars: #E06A3B; --moon: #B5BAC4; --query: #FFD54F;
+  --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { background: var(--bg); color: var(--text); }
+body { font-family: var(--sans); font-size: 14px; line-height: 1.5; margin: 0; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--panel); }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.app { display: grid; grid-template-columns: 300px minmax(0, 1fr); min-height: 100vh; }
+.side { background: var(--panel); border-right: 1px solid var(--line); position: sticky; top: env(safe-area-inset-top, 0px);
+        height: 100vh; overflow-y: auto; padding-block: 18px 40px; padding-left: max(18px, env(safe-area-inset-left, 0px)); padding-right: 18px; }
+main { min-width: 0; padding-block: 14px 40px; padding-left: 32px; padding-right: max(32px, env(safe-area-inset-right, 0px));
+       background: radial-gradient(1200px 500px at 50% -200px, rgba(91,140,255,.08), transparent 70%), var(--bg); }
+@media (max-width: 900px) {
+  .app { grid-template-columns: 1fr; }
+  .side { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--line);
+          padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  main { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+}
+
+/* sidebar */
+.sec { border-top: 1px solid var(--line); padding-top: 14px; margin-top: 14px; display: grid; gap: 10px; }
+.sec:first-child { border-top: none; margin-top: 0; padding-top: 0; }
+.sec-h { font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); display: flex; gap: 10px; }
+.sec-h b { color: var(--accent); font-weight: 500; }
+.field { display: grid; gap: 4px; }
+.field > span, .lbl { font-size: 12px; color: var(--muted); }
+select, input[type=text], input[type=number] {
+  width: 100%; background: var(--bg); border: 1px solid var(--line-strong); border-radius: 8px; padding: 7px 10px; min-width: 0;
+}
+.seg { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; }
+.seg label { text-align: center; padding: 7px 0; cursor: pointer; color: var(--muted); font-size: 13px; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label:has(input:checked) { background: var(--accent-soft); color: var(--text); }
+.seg label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
+.check { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.check input { accent-color: var(--accent); width: 15px; height: 15px; }
+.check.dis { opacity: .45; cursor: not-allowed; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.rng { display: grid; gap: 2px; }
+.rng .top { display: flex; justify-content: space-between; font-size: 12.5px; }
+.rng .top span:last-child { font-family: var(--mono); color: var(--accent); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.hint { font-size: 12px; color: var(--muted); background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.custom-grid { display: grid; gap: 8px; }
+.custom-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: center; }
+.custom-row .lbl { grid-column: 1 / -1; margin-bottom: -4px; }
+
+/* header */
+.topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.brand { display: flex; align-items: center; gap: 12px; font-weight: 600; font-size: 15px; }
+.mark { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--text); position: relative; flex: none; }
+.mark::after { content: ""; position: absolute; width: 7px; height: 7px; border-radius: 50%; background: var(--mars); top: -3px; right: -3px; box-shadow: 0 0 0 2px var(--bg); }
+.meta { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; }
+.hero { padding-block: 30px 24px; display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 36px; align-items: end; }
+@media (max-width: 1100px) { .hero { grid-template-columns: 1fr; gap: 14px; } }
+.kicker { font-family: var(--mono); font-size: 11.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); }
+h1 { font-size: clamp(28px, 3.4vw, 42px); line-height: 1.08; letter-spacing: -0.025em; margin: 10px 0 0; font-weight: 600; text-wrap: balance; }
+.hero p { color: var(--muted); margin: 0; max-width: 62ch; }
+.legend { display: flex; gap: 8px 18px; margin-top: 12px; flex-wrap: wrap; font-size: 13px; }
+.legend span { display: inline-flex; align-items: center; gap: 7px; }
+.legend em { font-style: normal; color: var(--faint); font-family: var(--mono); font-size: 11.5px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+
+.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 12px; background: var(--panel); overflow: hidden; margin-bottom: 22px; }
+@media (max-width: 900px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.kpi { padding: 15px 18px; border-right: 1px solid var(--line); min-width: 0; }
+.kpi:last-child { border-right: none; }
+@media (max-width: 900px) { .kpi:nth-child(2) { border-right: none; } .kpi:nth-child(-n+2) { border-bottom: 1px solid var(--line); } }
+.kpi .k { font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.kpi .v { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.kpi .s { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
+
+/* tabs */
+.tabs { display: flex; gap: 26px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.tabs button { background: none; border: none; padding: 10px 0; color: var(--muted); font-weight: 500; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; }
+.tabs button[aria-selected=true] { color: var(--text); border-bottom-color: var(--accent); }
+.panel { padding-top: 6px; }
+.sh { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin: 20px 0 10px; }
+.sh h3 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+.sh .aside { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+.note { color: var(--muted); font-size: 13px; line-height: 1.6; }
+.card { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); overflow: hidden; }
+.chart { width: 100%; }
+.btn { background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: 8px; padding: 7px 12px; cursor: pointer; font-weight: 500; font-size: 13px; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #0B0E14; }
+.toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.status { font-size: 12.5px; color: var(--muted); }
+
+/* tables */
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+th { text-align: left; font-weight: 500; color: var(--muted); font-size: 11.5px; padding: 9px 10px; border-bottom: 1px solid var(--line-strong); white-space: nowrap; position: sticky; top: 0; background: var(--panel); }
+td { padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+tr:last-child td { border-bottom: none; }
+tbody tr:hover td { background: var(--panel-2); }
+td.num { text-align: right; font-family: var(--mono); font-size: 12px; }
+td.name { max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
+.bar { display: grid; grid-template-columns: 70px auto; gap: 8px; align-items: center; font-family: var(--mono); font-size: 12px; }
+.bar i { display: block; height: 6px; border-radius: 3px; background: var(--line-strong); position: relative; overflow: hidden; }
+.bar i b { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 3px; }
+.tag { display: inline-flex; align-items: center; gap: 6px; }
+.src { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+.grid2 { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 18px; }
+@media (max-width: 1100px) { .grid2 { grid-template-columns: 1fr; } }
+.pick { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-bottom: 10px; }
+.globe-ctl { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center; margin: 14px 0 10px; }
+.sizeseg { display: inline-grid; grid-template-columns: repeat(4, 44px); border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; }
+.sizeseg button { background: none; border: none; padding: 6px 0; cursor: pointer; color: var(--muted); font-size: 12.5px; }
+.sizeseg button[aria-pressed=true] { background: var(--accent-soft); color: var(--text); }
+.leg { display: inline-flex; align-items: center; gap: 6px; margin-right: 16px; font-size: 12.5px; color: var(--text); }
+.loading { padding: 60px 20px; text-align: center; color: var(--muted); }
+
+.method { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+@media (max-width: 1100px) { .method { grid-template-columns: 1fr; } }
+.method h4 { font-size: 15px; margin: 18px 0 8px; font-weight: 600; }
+.method p, .method li { color: #C9D1E0; line-height: 1.65; max-width: 68ch; }
+.method code { font-family: var(--mono); font-size: 12px; background: var(--panel-2); border: 1px solid var(--line); padding: 1px 6px; border-radius: 5px; color: var(--text); }
+.steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--panel); margin-bottom: 14px; }
+@media (max-width: 900px) { .steps { grid-template-columns: 1fr 1fr; } }
+.step { padding: 14px 16px; border-right: 1px solid var(--line); min-width: 0; }
+.step:last-child { border-right: none; }
+.step .n { font-family: var(--mono); font-size: 11px; color: var(--accent); letter-spacing: .1em; }
+.step .t { font-weight: 600; margin-top: 4px; }
+.step .d { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+td.calc { font-family: var(--mono); font-size: 11.5px; color: #C9D1E0; }
+
+.formgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.footer { margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+          font-family: var(--mono); font-size: 11px; letter-spacing: .08em; color: var(--faint); text-transform: uppercase; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div class="app">
+  <aside class="side" aria-label="Search settings">
+    <div class="sec">
+      <div class="sec-h"><b>01</b>Query site</div>
+      <div class="seg" role="radiogroup" aria-label="Query source">
+        <label><input type="radio" name="src" id="src-db" value="db" checked>Database</label>
+        <label><input type="radio" name="src" id="src-custom" value="custom">Custom</label>
+      </div>
+      <label class="field"><span>Body</span>
+        <select id="q-body"><option>Earth</option><option selected>Mars</option><option>Moon</option></select></label>
+      <div id="db-query" class="custom-grid">
+        <label class="check"><input type="checkbox" id="q-catalog" checked>Catalog sites only</label>
+        <label class="field"><span>Site</span><select id="q-site"></select></label>
+      </div>
+      <div id="custom-query" class="custom-grid" hidden>
+        <label class="field"><span>Name</span><input type="text" id="c-name" value="Custom site"></label>
+        <div class="row2">
+          <label class="field"><span>Latitude</span><input type="number" id="c-lat" value="0" min="-90" max="90" step="0.1"></label>
+          <label class="field"><span>Longitude</span><input type="number" id="c-lon" value="0" min="-180" max="180" step="0.1"></label>
+        </div>
+        <div id="c-params" class="custom-grid"></div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-h"><b>02</b>Search scope</div>
+      <div class="chips" id="scope"></div>
+      <div class="hint" id="scope-hint" hidden>Mars and Moon sites are matched against Earth analogs only.</div>
+      <label class="check"><input type="checkbox" id="synth" checked>Include synthetic vicinity points</label>
+      <label class="field"><span>Number of analogs</span><input type="number" id="topn" value="20" min="5" max="200" step="5"></label>
+    </div>
+
+    <div class="sec">
+      <div class="sec-h"><b>03</b>Feature weights</div>
+      <div id="fw" class="custom-grid"></div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-h"><b>04</b>Method weights</div>
+      <div id="mw" class="custom-grid"></div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-h"><b>05</b>Advanced</div>
+      <div class="lbl">Log-transform before scaling</div>
+      <div class="chips" id="logk"></div>
+      <label class="check"><input type="checkbox" id="center" checked>Center cosine (x − 0.5)</label>
+      <div class="rng"><div class="top"><span>Penalty for missing axes</span><span id="pen-v">0.00</span></div>
+        <input type="range" id="pen" min="0" max="1" step="0.05" value="0" aria-label="Penalty for missing axes"></div>
+    </div>
+  </aside>
+
+  <main>
+    <div class="topbar">
+      <div class="brand"><span class="mark"></span>Planetary Analog Finder</div>
+      <div class="meta" id="meta">Loading catalog…</div>
+    </div>
+    <section class="hero">
+      <div>
+        <div class="kicker">Comparative planetology</div>
+        <h1>Earth analogs for Martian and lunar sites</h1>
+      </div>
+      <div>
+        <p>Each site is an eight-dimensional vector of surface and environmental parameters, scaled to 0–1 on a shared
+           range. A Mars or Moon site is matched against Earth sites; an Earth site can be matched against any body.
+           Similarity blends cosine, Euclidean and Manhattan measures under weights you control.</p>
+        <div class="legend" id="legend"></div>
+      </div>
+    </section>
+
+    <div class="kpis" id="kpis"></div>
+
+    <nav class="tabs" role="tablist" aria-label="Views">
+      <button role="tab" id="tab-results" aria-selected="true" data-tab="results">Results</button>
+      <button role="tab" id="tab-globes" aria-selected="false" data-tab="globes">Globes</button>
+      <button role="tab" id="tab-profiles" aria-selected="false" data-tab="profiles">Profiles</button>
+      <button role="tab" id="tab-space" aria-selected="false" data-tab="space">Feature space</button>
+      <button role="tab" id="tab-db" aria-selected="false" data-tab="db">Database</button>
+      <button role="tab" id="tab-method" aria-selected="false" data-tab="method">Methodology</button>
+    </nav>
+
+    <section class="panel" id="p-results" role="tabpanel">
+      <div class="sh"><h3 id="res-title">Top analogs</h3><span class="aside" id="res-aside"></span></div>
+      <div class="tbl-wrap" style="max-height: 760px;"><table id="res-table"></table></div>
+      <div class="toolbar"><button class="btn" id="copy-res">Copy results as CSV</button><span class="status" id="copy-status"></span></div>
+      <div class="sh"><h3>Method agreement</h3><span class="aside">Similarity per method, 0–1</span></div>
+      <div class="card"><div id="chart-methods" class="chart"></div></div>
+    </section>
+
+    <section class="panel" id="p-globes" role="tabpanel" hidden>
+      <div class="globe-ctl">
+        <div class="chips" id="globe-bodies"></div>
+        <div class="sizeseg" role="group" aria-label="Globe size" id="gsize">
+          <button data-h="400" aria-pressed="false">S</button><button data-h="480" aria-pressed="false">M</button>
+          <button data-h="580" aria-pressed="true">L</button><button data-h="740" aria-pressed="false">XL</button>
+        </div>
+      </div>
+      <div class="card"><div id="chart-globes" class="chart"><div class="loading">Loading textures…</div></div></div>
+      <p class="note" style="margin-top:10px">
+        <span class="leg"><span class="dot" style="background:var(--query)"></span>Query</span>
+        <span class="leg"><span class="dot" style="background:linear-gradient(90deg,#3D5AFE,#B388FF,#FFD54F)"></span>Top analogs, by similarity</span>
+        <span class="leg"><span class="dot" style="background:#fff"></span>Other sites</span><br>
+        Drag to rotate, scroll to zoom, hover for details. Mars and the Moon are rendered from global mosaics; Earth uses vector coastlines.
+      </p>
+    </section>
+
+    <section class="panel" id="p-profiles" role="tabpanel" hidden>
+      <div class="sh"><h3>Normalised profiles</h3><span class="aside">All parameters on a 0–1 scale</span></div>
+      <div class="pick" id="prof-pick"></div>
+      <div class="card"><div id="chart-radar" class="chart"></div></div>
+      <div class="sh"><h3>Difference breakdown</h3><span class="aside">Weight × |Δ| per parameter</span></div>
+      <label class="field" style="max-width:420px; margin-bottom:12px"><span>Analog</span><select id="diff-site"></select></label>
+      <div class="grid2">
+        <div class="card"><div id="chart-diff" class="chart"></div></div>
+        <div class="tbl-wrap"><table id="diff-table"></table></div>
+      </div>
+    </section>
+
+    <section class="panel" id="p-space" role="tabpanel" hidden>
+      <div class="sh"><h3>Feature space</h3><span class="aside" id="pca-aside"></span></div>
+      <div class="card"><div id="chart-pca" class="chart"></div></div>
+      <p class="note" style="margin-top:10px">Each point is a site projected from eight weighted dimensions onto the two directions of greatest variance. Points close together have similar parameter profiles.</p>
+    </section>
+
+    <section class="panel" id="p-db" role="tabpanel" hidden>
+      <div class="sh"><h3>Site database</h3><span class="aside" id="db-aside"></span></div>
+      <div class="toolbar" style="margin-top:0; margin-bottom:10px">
+        <input type="text" id="db-search" placeholder="Search by name" style="max-width:260px" aria-label="Search by name">
+        <div class="chips" id="db-bodies"></div>
+        <label class="check"><input type="checkbox" id="db-synth">Show synthetic points</label>
+      </div>
+      <div class="tbl-wrap" style="max-height: 460px;"><table id="db-table"></table></div>
+      <div class="toolbar"><button class="btn" id="db-prev">Previous</button><button class="btn" id="db-next">Next</button><span class="status" id="db-page"></span></div>
+
+      <div class="grid2" style="margin-top:24px">
+        <form id="add-form" class="card" style="padding:16px" autocomplete="off">
+          <div class="sh" style="margin-top:0"><h3>Add a site</h3><span class="aside">Saved in this browser</span></div>
+          <div class="formgrid">
+            <label class="field"><span>Name</span><input type="text" id="a-name" required></label>
+            <label class="field"><span>Body</span><select id="a-body"><option>Earth</option><option>Mars</option><option>Moon</option></select></label>
+            <label class="field"><span>Latitude</span><input type="number" id="a-lat" value="0" min="-90" max="90" step="any"></label>
+            <label class="field"><span>Longitude</span><input type="number" id="a-lon" value="0" min="-180" max="180" step="any"></label>
+          </div>
+          <div class="formgrid" id="a-params" style="margin-top:10px"></div>
+          <div class="toolbar"><button class="btn primary" type="submit">Save site</button><span class="status" id="add-status"></span></div>
+        </form>
+        <div class="card" style="padding:16px">
+          <div class="sh" style="margin-top:0"><h3>Import CSV</h3><span class="aside">Saved in this browser</span></div>
+          <p class="note">For example, parameters derived from Sentinel-1 or RADARSAT-1 radar data. Columns:
+            <span class="src">name, body, lat, lon, roughness, elevation, slope, temperature, mineral, uv, humidity, pressure</span></p>
+          <input type="file" id="csv-file" accept=".csv,text/csv" aria-label="CSV file">
+          <div class="toolbar"><button class="btn" id="clear-user">Remove my added sites</button><span class="status" id="csv-status"></span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="p-method" role="tabpanel" hidden>
+      <div id="worked"></div>
+      <div class="method">
+        <div>
+          <h4>How similarity is computed</h4>
+          <ol>
+            <li><b>Features</b>: roughness, elevation, mean slope, mean temperature, mineralization, UV index, humidity and atmospheric pressure.</li>
+            <li><b>Scaling to 0–1</b>: min–max over the whole database, so Earth, Mars and the Moon share one scale. Pressure and humidity are log-transformed by default because they span several orders of magnitude.</li>
+            <li><b>Search scope</b>: a Mars or Moon query is compared with Earth sites only. An Earth query uses the bodies chosen in the sidebar.</li>
+            <li><b>Missing axes</b>: the Moon has no atmosphere, so a Moon site is compared with Earth on six axes. <i>Coverage</i> is the share of feature weight used.</li>
+            <li><b>Metrics</b> (wᵢ are feature weights):
+              <ul>
+                <li>Cosine: <code>cos = Σwᵢaᵢbᵢ / (√Σwᵢaᵢ² · √Σwᵢbᵢ²)</code>, with a, b = x − 0.5 when centered; similarity = (cos + 1) / 2</li>
+                <li>Euclidean: <code>d = √(Σwᵢ(aᵢ−bᵢ)² / Σwᵢ)</code>, similarity = 1 − d</li>
+                <li>Manhattan: <code>d = Σwᵢ|aᵢ−bᵢ| / Σwᵢ</code>, similarity = 1 − d</li>
+              </ul></li>
+            <li><b>Score</b> = (α·cosine + β·Euclidean + γ·Manhattan) / (α + β + γ).</li>
+          </ol>
+        </div>
+        <div>
+          <h4>Catalog</h4>
+          <p id="cat-text"></p>
+          <h4>Sources for real data</h4>
+          <ul>
+            <li><b>Roughness</b>: synthetic aperture radar backscatter σ⁰ from RADARSAT-1 (Canadian open archive) and Sentinel-1 (Copernicus Data Space Ecosystem); Mini-RF for the Moon, SHARAD for Mars.</li>
+            <li><b>Elevation and slope</b>: Copernicus DEM, MOLA (Mars), LOLA (Moon).</li>
+            <li><b>Climate</b>: ERA5 (Earth), REMS/MEDA and the Mars Climate Database, Diviner (Moon).</li>
+            <li><b>Mineralogy</b>: Sentinel-2 and EnMAP, CRISM/OMEGA (Mars), Moon Mineralogy Mapper.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <div class="footer"><span>Planetary Analog Finder · catalog v3</span><span>Plotly · static build of the Streamlit app</span></div>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+<script>
+"use strict";
+const KEYS = ["roughness","elevation","slope","temperature","mineral","uv","humidity","pressure"];
+const LABELS = {roughness:"Roughness", elevation:"Elevation", slope:"Mean slope", temperature:"Mean temperature",
+  mineral:"Mineralization", uv:"UV index", humidity:"Humidity", pressure:"Atmospheric pressure"};
+const UNITS = {roughness:"m, RMS height", elevation:"m above datum", slope:"°", temperature:"°C",
+  mineral:"wt %", uv:"UV-index eq.", humidity:"g/m³", pressure:"kPa"};
+const EPS = {humidity:0.001, pressure:0.01};
+const ATMO = ["humidity","pressure"];
+const BODIES = ["Earth","Mars","Moon"];
+const BODY_COLORS = {Earth:"#4C8DF6", Mars:"#E06A3B", Moon:"#B5BAC4"};
+const METHOD_COLORS = {Cosine:"#5B8CFF", Euclidean:"#3FB9A3", Manhattan:"#D9A35B"};
+const SERIES = ["#5B8CFF","#3FB9A3","#D9A35B","#C77DFF","#E06A3B","#8A94A8"];
+const SCORE_SCALE = [[0,"#3D5AFE"],[0.5,"#B388FF"],[1,"#FFD54F"]];
+const QUERY_COLOR = "#FFD54F";
+const FONT = "Inter, system-ui, sans-serif";
+const PLOT_CFG = {displaylogo:false, responsive:true, modeBarButtonsToRemove:["toImage","sendDataToCloud"]};
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const isNum = v => typeof v === "number" && isFinite(v);
+function fmt(v) {
+  if (!isNum(v)) return "—";
+  const a = Math.abs(v);
+  if (a >= 1000) return Math.round(v).toLocaleString("en-US");
+  if (a >= 100) return v.toFixed(0);
+  if (a >= 10) return v.toFixed(1);
+  if (a >= 1) return v.toFixed(2);
+  if (a === 0) return "0";
+  return Number(v.toPrecision(3)).toString();
+}
+function store(key, val) { try { if (val === undefined) return JSON.parse(localStorage.getItem(key)); localStorage.setItem(key, JSON.stringify(val)); } catch (e) { return null; } }
+
+let CATALOG = [], USER = [], SITES = [];
+let state = { tab: "results", res: [], cand: 0, bodies: [], qNorm: [], norm: [], query: null, weights: [], globeH: 580, dbPage: 0 };
+
+function rebuildSites() { SITES = CATALOG.concat(USER); }
+
+/* ───────── controls ───────── */
+function buildControls() {
+  $("scope").innerHTML = BODIES.map(b => `<label class="check" id="scope-l-${b}"><input type="checkbox" id="scope-${b}" checked><span class="dot" style="background:${BODY_COLORS[b]}"></span>${b}</label>`).join("");
+  $("globe-bodies").innerHTML = BODIES.map(b => `<label class="check"><input type="checkbox" id="gb-${b}" checked><span class="dot" style="background:${BODY_COLORS[b]}"></span>${b}</label>`).join("");
+  $("db-bodies").innerHTML = BODIES.map(b => `<label class="check"><input type="checkbox" id="dbb-${b}" checked><span class="dot" style="background:${BODY_COLORS[b]}"></span>${b}</label>`).join("");
+  $("fw").innerHTML = KEYS.map(k => rangeHTML("w-" + k, LABELS[k], 1)).join("");
+  $("mw").innerHTML = [["m-cos","Cosine similarity"],["m-eu","Euclidean distance"],["m-man","Manhattan distance"]].map(([id, l]) => rangeHTML(id, l, 1)).join("");
+  $("logk").innerHTML = KEYS.map(k => `<label class="check"><input type="checkbox" id="log-${k}" ${ATMO.includes(k) ? "checked" : ""}>${LABELS[k]}</label>`).join("");
+  $("c-params").innerHTML = KEYS.map(k => `<div class="custom-row" id="crow-${k}"><span class="lbl">${LABELS[k]} (${UNITS[k]})</span>
+      <input type="checkbox" id="cu-${k}" checked aria-label="Use ${LABELS[k]}" style="accent-color:var(--accent)">
+      <input type="number" id="cv-${k}" step="any" aria-label="${LABELS[k]}"></div>`).join("");
+  $("a-params").innerHTML = KEYS.map(k => `<label class="field"><span>${LABELS[k]} (${UNITS[k]})</span><input type="number" id="a-${k}" step="any" value="0"></label>`).join("");
+}
+function rangeHTML(id, label, val) {
+  return `<div class="rng"><div class="top"><span>${label}</span><span id="${id}-v">${val.toFixed(2)}</span></div>
+    <input type="range" id="${id}" min="0" max="1" step="0.05" value="${val}" aria-label="${label}"></div>`;
+}
+
+function fillSiteSelect() {
+  const body = $("q-body").value, onlyCat = $("q-catalog").checked, prev = $("q-site").value;
+  const opts = SITES.filter(s => s.body === body && (!onlyCat || s.source !== "synthetic"));
+  $("q-site").innerHTML = opts.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join("");
+  if (opts.some(s => String(s.id) === prev)) $("q-site").value = prev;
+  else { const gale = opts.find(s => s.name === "Gale Crater (Curiosity)"); if (gale) $("q-site").value = gale.id; }
+}
+function fillCustomDefaults() {
+  const body = $("q-body").value;
+  KEYS.forEach(k => {
+    const vals = SITES.filter(s => s.body === body && isNum(s[k])).map(s => s[k]).sort((a, b) => a - b);
+    const med = vals.length ? vals[Math.floor(vals.length / 2)] : 0;
+    $("cv-" + k).value = Number(med.toPrecision(4));
+    $("crow-" + k).hidden = body === "Moon" && ATMO.includes(k);
+  });
+}
+function readQuery() {
+  const body = $("q-body").value;
+  if ($("src-db").checked) {
+    const s = SITES.find(x => String(x.id) === $("q-site").value);
+    if (!s) return null;
+    return { id: s.id, name: s.name, body: s.body, lat: s.lat, lon: s.lon, vals: KEYS.map(k => s[k]) };
+  }
+  return { id: null, name: $("c-name").value.trim() || "Custom site", body, lat: parseFloat($("c-lat").value), lon: parseFloat($("c-lon").value),
+    vals: KEYS.map(k => (body === "Moon" && ATMO.includes(k)) || !$("cu-" + k).checked ? null : parseFloat($("cv-" + k).value)).map(v => isNum(v) ? v : null) };
+}
+
+/* ───────── normalisation & similarity ───────── */
+function transform(v, k, logSet) {
+  if (!isNum(v)) return null;
+  return logSet.has(k) ? Math.log10(Math.max(v, 0) + Math.max(EPS[k] || 0, 1e-6)) : v;
+}
+function normalizer(logSet) {
+  const lo = {}, hi = {};
+  KEYS.forEach(k => { let a = Infinity, b = -Infinity;
+    SITES.forEach(s => { const t = transform(s[k], k, logSet); if (t !== null) { if (t < a) a = t; if (t > b) b = t; } });
+    lo[k] = a; hi[k] = b; });
+  return (vals) => KEYS.map((k, i) => { const t = transform(vals[i], k, logSet); if (t === null) return null;
+    const r = (hi[k] - lo[k]) || 1; return Math.min(1, Math.max(0, (t - lo[k]) / r)); });
+}
+function similarity(q, x, w, mw, center, pen, maxW) {
+  let ws = 0, se = 0, sm = 0, num = 0, da = 0, db = 0, n = 0;
+  for (let i = 0; i < q.length; i++) {
+    if (q[i] === null || x[i] === null || w[i] <= 0) continue;
+    const d = q[i] - x[i], a = center ? q[i] - .5 : q[i], b = center ? x[i] - .5 : x[i];
+    ws += w[i]; se += w[i] * d * d; sm += w[i] * Math.abs(d); num += w[i] * a * b; da += w[i] * a * a; db += w[i] * b * b; n++;
+  }
+  if (ws <= 0) return null;
+  const eu = 1 - Math.sqrt(se / ws), man = 1 - sm / ws, den = Math.sqrt(da) * Math.sqrt(db);
+  let cos = den > 1e-12 ? num / den : null;
+  cos = cos === null ? eu : (center ? (cos + 1) / 2 : Math.max(0, Math.min(1, cos)));
+  const msum = mw[0] + mw[1] + mw[2];
+  let score = (mw[0] * cos + mw[1] * eu + mw[2] * man) / msum;
+  const cov = maxW > 0 ? ws / maxW : 0;
+  score *= 1 - pen * (1 - cov);
+  return { score, cos, euclid: eu, manhattan: man, coverage: cov, axes: n };
+}
+function findAnalogs(query, norm, qNorm, w, mw, center, pen, scope, synth, topN) {
+  const bodies = query.body === "Mars" || query.body === "Moon" ? ["Earth"] : scope;
+  const maxW = KEYS.reduce((a, k, i) => a + (qNorm[i] !== null && w[i] > 0 ? w[i] : 0), 0);
+  const out = []; let cand = 0;
+  SITES.forEach((s, i) => {
+    if (!bodies.includes(s.body)) return;
+    if (!synth && s.source === "synthetic") return;
+    if (query.id !== null && s.id === query.id) return;
+    cand++;
+    const r = similarity(qNorm, norm[i], w, mw, center, pen, maxW);
+    if (r) out.push(Object.assign({ site: s, idx: i }, r));
+  });
+  out.sort((a, b) => b.score - a.score);
+  const res = out.slice(0, topN).map((r, j) => Object.assign(r, { rank: j + 1 }));
+  return { res, cand, bodies };
+}
+
+/* ───────── main update ───────── */
+function compute() {
+  const logSet = new Set(KEYS.filter(k => $("log-" + k).checked));
+  const nz = normalizer(logSet);
+  const norm = SITES.map(s => nz(KEYS.map(k => s[k])));
+  const query = readQuery();
+  if (!query) return;
+  const qNorm = nz(query.vals);
+  const w = KEYS.map(k => parseFloat($("w-" + k).value));
+  let mw = ["m-cos","m-eu","m-man"].map(id => parseFloat($(id).value));
+  if (mw[0] + mw[1] + mw[2] === 0) mw = [1, 1, 1];
+  const scope = BODIES.filter(b => $("scope-" + b).checked);
+  const topN = Math.max(5, Math.min(200, parseInt($("topn").value) || 20));
+  const out = findAnalogs(query, norm, qNorm, w, mw, $("center").checked, parseFloat($("pen").value), scope, $("synth").checked, topN);
+  Object.assign(state, { norm, query, qNorm, weights: w, logSet, res: out.res, cand: out.cand, bodies: out.bodies, nz });
+}
+function update() {
+  compute();
+  renderSidebarState(); renderHeader(); renderActive();
+}
+let raf = 0;
+function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(update); }
+
+function renderSidebarState() {
+  const body = $("q-body").value, locked = body !== "Earth";
+  BODIES.forEach(b => { const cb = $("scope-" + b); cb.disabled = locked; $("scope-l-" + b).classList.toggle("dis", locked); });
+  $("scope-hint").hidden = !locked;
+  ["pen"].concat(KEYS.map(k => "w-" + k), ["m-cos","m-eu","m-man"]).forEach(id => { $(id + "-v").textContent = parseFloat($(id).value).toFixed(2); });
+}
+
+function renderHeader() {
+  const nCat = SITES.filter(s => s.source === "catalog").length;
+  $("meta").textContent = `Catalog v3 · ${SITES.length.toLocaleString("en-US")} sites · ${nCat} named · 8 parameters`;
+  $("legend").innerHTML = BODIES.map(b => { const all = SITES.filter(s => s.body === b), named = all.filter(s => s.source === "catalog");
+    return `<span><span class="dot" style="background:${BODY_COLORS[b]}"></span>${b} <em>${named.length} named · ${all.length} total</em></span>`; }).join("");
+  const q = state.query, r = state.res, best = r[0];
+  const byBody = BODIES.map(b => r.filter(x => x.site.body === b).length).join(" / ");
+  $("kpis").innerHTML = `
+    <div class="kpi"><div class="k">Query</div><div class="v" title="${esc(q.name)}">${esc(q.name)}</div><div class="s"><span class="dot" style="background:${BODY_COLORS[q.body]}"></span>${q.body}</div></div>
+    <div class="kpi"><div class="k">Candidates compared</div><div class="v">${state.cand.toLocaleString("en-US")}</div><div class="s">${state.bodies.join(" · ") || "No bodies selected"}</div></div>
+    <div class="kpi"><div class="k">Best match score</div><div class="v">${best ? best.score.toFixed(3) : "—"}</div><div class="s">${best ? `<span class="dot" style="background:${BODY_COLORS[best.site.body]}"></span>${esc(best.site.name)}` : "No results"}</div></div>
+    <div class="kpi"><div class="k">Top ${r.length} by body</div><div class="v">${r.length ? byBody : "—"}</div><div class="s">Earth / Mars / Moon</div></div>`;
+}
+
+/* ───────── plot helpers ───────── */
+function baseLayout(extra) {
+  return Object.assign({
+    paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+    font: { family: FONT, color: "#C9D1E0", size: 12 }, margin: { l: 16, r: 16, t: 20, b: 16 },
+    hoverlabel: { bgcolor: "#141925", bordercolor: "#2A3245", font: { family: FONT, size: 12, color: "#E6EAF2" } },
+    xaxis: { gridcolor: "#1F2533", zerolinecolor: "#2A3245", linecolor: "#2A3245", automargin: true },
+    yaxis: { gridcolor: "#1F2533", zerolinecolor: "#2A3245", linecolor: "#2A3245", automargin: true },
+    legend: { bgcolor: "rgba(0,0,0,0)", orientation: "h", y: 1.02, yanchor: "bottom", x: 0 },
+  }, extra || {});
+}
+const bar = v => `<div class="bar"><i><b style="width:${Math.max(0, Math.min(100, v * 100)).toFixed(1)}%"></b></i><span>${v.toFixed(3)}</span></div>`;
+const bodyTag = b => `<span class="tag"><span class="dot" style="background:${BODY_COLORS[b]}"></span>${b}</span>`;
+
+/* ───────── results ───────── */
+function renderResults() {
+  const r = state.res, q = state.query;
+  $("res-title").textContent = `Top ${r.length} analogs`;
+  $("res-aside").textContent = `Query: ${q.name} · ${q.body} → searched: ${state.bodies.join(", ")}`;
+  if (!r.length) { $("res-table").innerHTML = `<tbody><tr><td class="note">No candidates. Select at least one body to search, or give a parameter a weight above 0.</td></tr></tbody>`; Plotly.purge("chart-methods"); return; }
+  $("res-table").innerHTML = `<thead><tr><th>#</th><th>Site</th><th>Body</th><th>Score</th><th>Cosine</th><th>Euclidean</th><th>Manhattan</th><th>Coverage</th><th>Axes</th><th>Lat</th><th>Lon</th>${KEYS.map(k => `<th title="${UNITS[k]}">${LABELS[k]}</th>`).join("")}<th>Source</th></tr></thead>
+    <tbody>${r.map(x => `<tr><td class="num">${x.rank}</td><td class="name" title="${esc(x.site.name)}">${esc(x.site.name)}</td><td>${bodyTag(x.site.body)}</td>
+      <td>${bar(x.score)}</td><td>${bar(x.cos)}</td><td>${bar(x.euclid)}</td><td>${bar(x.manhattan)}</td><td>${bar(x.coverage)}</td>
+      <td class="num">${x.axes}</td><td class="num">${fmt(x.site.lat)}</td><td class="num">${fmt(x.site.lon)}</td>
+      ${KEYS.map(k => `<td class="num">${fmt(x.site[k])}</td>`).join("")}<td class="src">${x.site.source}</td></tr>`).join("")}</tbody>`;
+  const labels = r.map(x => `${String(x.rank).padStart(2, " ")}  ${x.site.name}`);
+  const minV = Math.min(...r.map(x => Math.min(x.cos, x.euclid, x.manhattan)));
+  const traces = [["Cosine","cos"],["Euclidean","euclid"],["Manhattan","manhattan"]].map(([n, k]) => ({
+    type: "bar", orientation: "h", name: n, y: labels, x: r.map(x => x[k]), marker: { color: METHOD_COLORS[n] },
+    hovertemplate: "%{y}<br>" + n + " %{x:.3f}<extra></extra>" }));
+  const lay = baseLayout({ barmode: "group", bargap: .25, height: Math.max(420, 34 * r.length), margin: { l: 16, r: 16, t: 40, b: 30 } });
+  lay.yaxis = Object.assign({}, lay.yaxis, { autorange: "reversed" });
+  lay.xaxis = Object.assign({}, lay.xaxis, { range: [Math.max(0, minV - .05), 1] });
+  Plotly.react("chart-methods", traces, lay, PLOT_CFG);
+}
+
+/* ───────── globes ───────── */
+const TEX = { Mars: "assets/mars.jpg", Moon: "assets/moon.png" };
+const texCache = {};
+function xyz(lat, lon, r) { const a = lat * Math.PI / 180, b = lon * Math.PI / 180; return [r * Math.cos(a) * Math.cos(b), r * Math.cos(a) * Math.sin(b), r * Math.sin(a)]; }
+function loadSphere(body) {
+  if (texCache[body]) return texCache[body];
+  texCache[body] = new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const W = 360, H = 180, cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+      const ctx = cv.getContext("2d"); ctx.drawImage(img, 0, 0, W, H);
+      const d = ctx.getImageData(0, 0, W, H).data, n = W * H, lum = new Float32Array(n);
+      for (let i = 0; i < n; i++) lum[i] = (0.2126 * d[i * 4] + 0.7152 * d[i * 4 + 1] + 0.0722 * d[i * 4 + 2]) / 255;
+      const sorted = Array.from(lum).sort((a, b) => a - b), lo = sorted[Math.floor(n * .005)], hi = sorted[Math.floor(n * .995)];
+      const NB = 64, cnt = new Array(NB).fill(0), sum = Array.from({ length: NB }, () => [0, 0, 0]), t = new Float32Array(n);
+      for (let i = 0; i < n; i++) { const v = Math.min(1, Math.max(0, (lum[i] - lo) / Math.max(hi - lo, 1e-6))); t[i] = v;
+        const bi = Math.min(NB - 1, Math.floor(v * NB)); cnt[bi]++; sum[bi][0] += d[i * 4]; sum[bi][1] += d[i * 4 + 1]; sum[bi][2] += d[i * 4 + 2]; }
+      const centers = [], cols = [];
+      for (let b = 0; b < NB; b++) if (cnt[b]) { centers.push((b + .5) / NB); cols.push(sum[b].map(v => v / cnt[b])); }
+      const colorAt = p => { if (p <= centers[0]) return cols[0]; for (let j = 1; j < centers.length; j++) if (p <= centers[j]) {
+          const f = (p - centers[j - 1]) / (centers[j] - centers[j - 1]); return cols[j].map((c, m) => cols[j - 1][m] + f * (c - cols[j - 1][m])); }
+        return cols[cols.length - 1]; };
+      const cs = [];
+      for (let b = 0; b <= NB; b++) { const p = b / NB, c = colorAt(p); cs.push([p, `rgb(${c.map(v => Math.round(v)).join(",")})`]); }
+      const X = [], Y = [], Z = [], C = [];
+      for (let r = 0; r < H; r++) {
+        const lat = 90 - 180 * r / (H - 1), xr = [], yr = [], zr = [], cr = [];
+        for (let c = 0; c <= W; c++) { const lon = -180 + 360 * c / W, p = xyz(lat, lon, 1);
+          xr.push(p[0]); yr.push(p[1]); zr.push(p[2]); cr.push(t[r * W + (c % W)]); }
+        X.push(xr); Y.push(yr); Z.push(zr); C.push(cr);
+      }
+      resolve({ x: X, y: Y, z: Z, surfacecolor: C, colorscale: cs });
+    };
+    img.onerror = () => reject(new Error("Texture failed to load: " + TEX[body]));
+    img.src = TEX[body];
+  });
+  return texCache[body];
+}
+function centerFor(body, top) {
+  const q = state.query;
+  if (q.body === body && isNum(q.lat) && isNum(q.lon)) return [q.lat, q.lon];
+  if (top.length) { const b = top[top.length - 1].site; return [b.lat, b.lon]; }
+  return [15, 0];
+}
+async function renderGlobes() {
+  const el = $("chart-globes");
+  const bodies = BODIES.filter(b => $("gb-" + b).checked);
+  if (!bodies.length) { Plotly.purge(el); el.innerHTML = `<div class="loading">Select at least one globe.</div>`; return; }
+  let spheres;
+  try { spheres = await Promise.all(bodies.filter(b => b !== "Earth").map(b => loadSphere(b).then(s => [b, s]))); }
+  catch (e) { el.innerHTML = `<div class="loading">${esc(e.message)}</div>`; return; }
+  const sph = Object.fromEntries(spheres);
+  if (el.querySelector(".loading")) el.innerHTML = "";
+  const res = state.res, q = state.query, scoreOf = new Map(res.map(r => [r.site.id, r]));
+  const smin = res.length ? Math.min(...res.map(r => r.score)) : 0, smax = res.length ? Math.max(...res.map(r => r.score)) : 1;
+  const traces = [], layout = baseLayout({ height: state.globeH + (bodies.length === 1 ? 160 : 0), margin: { l: 0, r: 0, t: 36, b: 0 },
+    uirevision: `${q.id}|${q.body}|${bodies.join()}`, annotations: [], showlegend: false });
+  delete layout.xaxis; delete layout.yaxis;
+  let barDone = false, sceneN = 0;
+  const gap = .015, wdt = (1 - gap * (bodies.length - 1)) / bodies.length;
+  const hoverTop = "<b>#%{customdata[0]} · %{text}</b><br>Similarity %{customdata[1]:.3f}<br>%{customdata[2]:.2f}°, %{customdata[3]:.2f}°<extra></extra>";
+  bodies.forEach((b, i) => {
+    const dom = [i * (wdt + gap), i * (wdt + gap) + wdt];
+    layout.annotations.push({ text: b.toUpperCase(), x: (dom[0] + dom[1]) / 2, y: 1.05, xref: "paper", yref: "paper", showarrow: false, font: { size: 11, color: "#8A94A8", family: FONT } });
+    const pts = SITES.filter(s => s.body === b && isNum(s.lat) && isNum(s.lon));
+    const top = pts.filter(s => scoreOf.has(s.id)).map(s => scoreOf.get(s.id)).sort((a, c) => a.score - c.score);
+    const rest = pts.filter(s => !scoreOf.has(s.id));
+    const showBar = top.length > 0 && !barDone; barDone = barDone || showBar;
+    const cbar = { title: { text: "SIMILARITY", side: "right", font: { size: 10 } }, thickness: 8, len: .55, x: 1.0, outlinewidth: 0, tickfont: { size: 10 } };
+    const [lat0, lon0] = centerFor(b, top);
+    const isQ = q.body === b && isNum(q.lat) && isNum(q.lon);
+    const topMarker = (size) => ({ size, color: top.map(r => r.score), cmin: smin, cmax: smax === smin ? smin + .01 : smax, colorscale: SCORE_SCALE,
+      line: { width: 1, color: "#0B0E14" }, showscale: showBar, colorbar: cbar });
+    const custom = top.map(r => [r.rank, r.score, r.site.lat, r.site.lon]);
+    if (b === "Earth") {
+      const g = "geo";
+      traces.push({ type: "scattergeo", geo: g, lat: rest.map(s => s.lat), lon: rest.map(s => s.lon), text: rest.map(s => s.name), mode: "markers",
+        hovertemplate: "%{text}<extra></extra>", marker: { size: 3, color: "rgba(255,255,255,0.75)" } });
+      if (top.length) traces.push({ type: "scattergeo", geo: g, lat: top.map(r => r.site.lat), lon: top.map(r => r.site.lon), text: top.map(r => r.site.name),
+        customdata: custom, hovertemplate: hoverTop, mode: "markers", marker: topMarker(10) });
+      if (isQ) traces.push({ type: "scattergeo", geo: g, lat: [q.lat], lon: [q.lon], text: [q.name], mode: "markers", hovertemplate: "<b>Query</b> · %{text}<extra></extra>",
+        marker: { symbol: "diamond", size: 15, color: QUERY_COLOR, line: { width: 1.5, color: "#0B0E14" } } });
+      const grid = "rgba(255,255,255,0.08)";
+      layout.geo = { domain: { x: dom, y: [0, 1] }, projection: { type: "orthographic", rotation: { lat: Math.max(-60, Math.min(60, lat0)), lon: lon0 } },
+        showland: true, landcolor: "#2B3A2F", showocean: true, oceancolor: "#0E2238", showlakes: true, lakecolor: "#0E2238",
+        showcountries: true, countrycolor: "rgba(255,255,255,0.10)", showcoastlines: true, coastlinecolor: "#6F8FAF", coastlinewidth: .6,
+        showframe: false, bgcolor: "rgba(0,0,0,0)", lataxis: { showgrid: true, gridcolor: grid, dtick: 30 }, lonaxis: { showgrid: true, gridcolor: grid, dtick: 30 } };
+    } else {
+      sceneN++; const sc = sceneN === 1 ? "scene" : "scene" + sceneN, s = sph[b], R = 1.012;
+      traces.push({ type: "surface", scene: sc, x: s.x, y: s.y, z: s.z, surfacecolor: s.surfacecolor, colorscale: s.colorscale, cmin: 0, cmax: 1,
+        showscale: false, hoverinfo: "skip", lighting: { ambient: .78, diffuse: .45, specular: .04, roughness: .95, fresnel: .05 }, lightposition: { x: 1e5, y: 5e4, z: 5e4 } });
+      const P = (arr, r) => { const o = { x: [], y: [], z: [] }; arr.forEach(([la, lo]) => { const p = xyz(la, lo, r); o.x.push(p[0]); o.y.push(p[1]); o.z.push(p[2]); }); return o; };
+      if (rest.length) traces.push(Object.assign({ type: "scatter3d", scene: sc, mode: "markers", text: rest.map(s => s.name), hovertemplate: "%{text}<extra></extra>",
+        marker: { size: 2, color: "rgba(255,255,255,0.75)" } }, P(rest.map(s => [s.lat, s.lon]), R)));
+      if (top.length) traces.push(Object.assign({ type: "scatter3d", scene: sc, mode: "markers", text: top.map(r => r.site.name), customdata: custom,
+        hovertemplate: hoverTop, marker: topMarker(6) }, P(top.map(r => [r.site.lat, r.site.lon]), R + .004)));
+      if (isQ) traces.push(Object.assign({ type: "scatter3d", scene: sc, mode: "markers", text: [q.name], hovertemplate: "<b>Query</b> · %{text}<extra></extra>",
+        marker: { size: 9, symbol: "diamond", color: QUERY_COLOR, line: { width: 1.5, color: "#0B0E14" } } }, P([[q.lat, q.lon]], R + .01)));
+      const e = xyz(Math.max(-70, Math.min(70, lat0)), lon0, 2.25), ax = { visible: false, showbackground: false };
+      layout[sc] = { domain: { x: dom, y: [0, 1] }, xaxis: ax, yaxis: ax, zaxis: ax, aspectmode: "cube", bgcolor: "rgba(0,0,0,0)", dragmode: "turntable",
+        camera: { eye: { x: e[0], y: e[1], z: e[2] }, up: { x: 0, y: 0, z: 1 }, projection: { type: "perspective" } } };
+    }
+  });
+  Plotly.react(el, traces, layout, Object.assign({}, PLOT_CFG, { scrollZoom: true, topojsonURL: new URL("topojson/", location.href).href }));
+}
+
+/* ───────── profiles ───────── */
+let profPick = null;
+function renderProfiles() {
+  const r = state.res;
+  if (!r.length) { $("prof-pick").innerHTML = `<span class="note">No results.</span>`; Plotly.purge("chart-radar"); Plotly.purge("chart-diff"); $("diff-table").innerHTML = ""; $("diff-site").innerHTML = ""; return; }
+  const ids = new Set(r.map(x => x.site.id));
+  if (!profPick || ![...profPick].every(id => ids.has(id))) profPick = new Set(r.slice(0, 3).map(x => x.site.id));
+  $("prof-pick").innerHTML = r.slice(0, 12).map(x => `<label class="check"><input type="checkbox" data-pid="${x.site.id}" ${profPick.has(x.site.id) ? "checked" : ""}>${esc(x.site.name)}</label>`).join("");
+  const theta = KEYS.map(k => LABELS[k]).concat(LABELS[KEYS[0]]);
+  const tr = (vec, name, color, isQ) => { const rr = vec.map(v => v === null ? null : v); return { type: "scatterpolar", r: rr.concat(rr[0]), theta, name,
+    connectgaps: false, fill: isQ ? "toself" : "none", fillcolor: "rgba(255,213,79,0.10)", line: { color, width: isQ ? 2.5 : 1.6 } }; };
+  const traces = [tr(state.qNorm, "Query · " + state.query.name, QUERY_COLOR, true)];
+  let j = 0; r.forEach(x => { if (profPick.has(x.site.id)) traces.push(tr(state.norm[x.idx], x.site.name, SERIES[j++ % SERIES.length], false)); });
+  const lay = baseLayout({ height: 560, margin: { l: 60, r: 60, t: 30, b: 60 }, legend: { orientation: "h", y: -0.12, bgcolor: "rgba(0,0,0,0)" },
+    polar: { bgcolor: "rgba(0,0,0,0)", radialaxis: { range: [0, 1], gridcolor: "#1F2533", linecolor: "#2A3245", tickfont: { size: 9, color: "#5D667A" } },
+             angularaxis: { gridcolor: "#1F2533", linecolor: "#2A3245" } } });
+  delete lay.xaxis; delete lay.yaxis;
+  Plotly.react("chart-radar", traces, lay, PLOT_CFG);
+
+  const prev = $("diff-site").value;
+  $("diff-site").innerHTML = r.map(x => `<option value="${x.site.id}">${x.rank}. ${esc(x.site.name)}</option>`).join("");
+  if (r.some(x => String(x.site.id) === prev)) $("diff-site").value = prev;
+  renderDiff();
+}
+function renderDiff() {
+  const x = state.res.find(r => String(r.site.id) === $("diff-site").value); if (!x) return;
+  const xv = state.norm[x.idx];
+  const rows = KEYS.map((k, i) => { const d = state.qNorm[i] === null || xv[i] === null ? null : Math.abs(state.qNorm[i] - xv[i]);
+    return { k, d, w: state.weights[i], c: d === null ? null : d * state.weights[i], q: state.query.vals[i], a: x.site[k] }; });
+  const plotRows = rows.filter(r => r.c !== null).sort((a, b) => a.c - b.c);
+  Plotly.react("chart-diff", [{ type: "bar", orientation: "h", x: plotRows.map(r => r.c), y: plotRows.map(r => LABELS[r.k]), marker: { color: "#5B8CFF" },
+    hovertemplate: "%{y}: %{x:.3f}<extra></extra>" }], baseLayout({ height: 380, margin: { l: 16, r: 16, t: 20, b: 30 } }), PLOT_CFG);
+  $("diff-table").innerHTML = `<thead><tr><th>Parameter</th><th>|Δ|</th><th>Weight</th><th>Contribution</th><th>Query</th><th>Analog</th><th>Unit</th></tr></thead>
+    <tbody>${rows.map(r => `<tr><td>${LABELS[r.k]}</td><td class="num">${fmt(r.d)}</td><td class="num">${fmt(r.w)}</td><td class="num">${fmt(r.c)}</td>
+      <td class="num">${fmt(r.q)}</td><td class="num">${fmt(r.a)}</td><td class="src">${UNITS[r.k]}</td></tr>`).join("")}</tbody>`;
+}
+
+/* ───────── PCA ───────── */
+function jacobiEigen(A) {
+  const n = A.length, a = A.map(r => r.slice()), V = A.map((_, i) => A.map((__, j) => i === j ? 1 : 0));
+  for (let sweep = 0; sweep < 60; sweep++) {
+    let off = 0; for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) off += a[i][j] * a[i][j];
+    if (off < 1e-14) break;
+    for (let p = 0; p < n; p++) for (let q = p + 1; q < n; q++) {
+      if (Math.abs(a[p][q]) < 1e-15) continue;
+      const th = (a[q][q] - a[p][p]) / (2 * a[p][q]), t = Math.sign(th || 1) / (Math.abs(th) + Math.sqrt(th * th + 1)), c = 1 / Math.sqrt(t * t + 1), s = t * c;
+      for (let k = 0; k < n; k++) { const akp = a[k][p], akq = a[k][q]; a[k][p] = c * akp - s * akq; a[k][q] = s * akp + c * akq; }
+      for (let k = 0; k < n; k++) { const apk = a[p][k], aqk = a[q][k]; a[p][k] = c * apk - s * aqk; a[q][k] = s * apk + c * aqk; }
+      for (let k = 0; k < n; k++) { const vkp = V[k][p], vkq = V[k][q]; V[k][p] = c * vkp - s * vkq; V[k][q] = s * vkp + c * vkq; }
+    }
+  }
+  return { vals: a.map((r, i) => r[i]), vecs: V };
+}
+function renderSpace() {
+  const rows = state.norm.concat([state.qNorm]), d = KEYS.length, n = rows.length;
+  const mean = KEYS.map((_, j) => { let s = 0, c = 0; rows.forEach(r => { if (r[j] !== null) { s += r[j]; c++; } }); return c ? s / c : .5; });
+  const sw = state.weights.map(Math.sqrt);
+  const Z = rows.map(r => r.map((v, j) => ((v === null ? mean[j] : v) - mean[j]) * sw[j]));
+  const zm = KEYS.map((_, j) => Z.reduce((a, r) => a + r[j], 0) / n);
+  Z.forEach(r => r.forEach((v, j) => { r[j] = v - zm[j]; }));
+  const C = KEYS.map((_, i) => KEYS.map((__, j) => Z.reduce((a, r) => a + r[i] * r[j], 0) / (n - 1)));
+  const { vals, vecs } = jacobiEigen(C);
+  const order = vals.map((v, i) => [v, i]).sort((a, b) => b[0] - a[0]);
+  const total = vals.reduce((a, v) => a + Math.max(v, 0), 0) || 1;
+  const pcs = order.slice(0, 2).map(([, i]) => vecs.map(r => r[i]));
+  const proj = Z.map(r => pcs.map(pc => r.reduce((a, v, j) => a + v * pc[j], 0)));
+  $("pca-aside").textContent = `PCA projection · ${Math.round((order[0][0] + order[1][0]) / total * 100)}% of variance explained`;
+  const top = new Set(state.res.map(r => r.site.id)), traces = [];
+  BODIES.forEach(b => {
+    ["other", "top analog"].forEach(role => {
+      const idx = SITES.map((s, i) => i).filter(i => SITES[i].body === b && (top.has(SITES[i].id) === (role === "top analog")));
+      if (!idx.length) return;
+      traces.push({ type: "scattergl", mode: "markers", name: `${b} · ${role}`, x: idx.map(i => proj[i][0]), y: idx.map(i => proj[i][1]), text: idx.map(i => SITES[i].name),
+        hovertemplate: "%{text}<extra></extra>", marker: { color: BODY_COLORS[b], size: role === "other" ? 5 : 11, symbol: role === "other" ? "circle" : "diamond",
+          opacity: role === "other" ? .55 : 1, line: { width: role === "other" ? 0 : 1, color: "#0B0E14" } } });
+    });
+  });
+  traces.push({ type: "scatter", mode: "markers", name: "Query", x: [proj[n - 1][0]], y: [proj[n - 1][1]], text: [state.query.name], hovertemplate: "<b>Query</b> · %{text}<extra></extra>",
+    marker: { color: QUERY_COLOR, size: 18, symbol: "star", line: { width: 1, color: "#0B0E14" } } });
+  const lay = baseLayout({ height: 600, margin: { l: 16, r: 16, t: 50, b: 30 } });
+  lay.xaxis.title = { text: "PC1" }; lay.yaxis.title = { text: "PC2" };
+  Plotly.react("chart-pca", traces, lay, PLOT_CFG);
+}
+
+/* ───────── database ───────── */
+const PAGE = 100;
+function dbRows() {
+  const qs = $("db-search").value.trim().toLowerCase(), bodies = BODIES.filter(b => $("dbb-" + b).checked), syn = $("db-synth").checked;
+  return SITES.filter(s => bodies.includes(s.body) && (syn || s.source !== "synthetic") && (!qs || s.name.toLowerCase().includes(qs)));
+}
+function renderDB() {
+  const rows = dbRows(), pages = Math.max(1, Math.ceil(rows.length / PAGE));
+  state.dbPage = Math.min(state.dbPage, pages - 1);
+  const view = rows.slice(state.dbPage * PAGE, (state.dbPage + 1) * PAGE);
+  $("db-aside").textContent = `${SITES.length.toLocaleString("en-US")} records · ${USER.length} added in this browser`;
+  $("db-page").textContent = `Page ${state.dbPage + 1} of ${pages} · ${rows.length.toLocaleString("en-US")} matching`;
+  $("db-prev").disabled = state.dbPage === 0; $("db-next").disabled = state.dbPage >= pages - 1;
+  $("db-table").innerHTML = `<thead><tr><th>ID</th><th>Site</th><th>Body</th><th>Lat</th><th>Lon</th>${KEYS.map(k => `<th title="${UNITS[k]}">${LABELS[k]}</th>`).join("")}<th>Source</th></tr></thead>
+    <tbody>${view.map(s => `<tr><td class="num">${s.id}</td><td class="name" title="${esc(s.name)}">${esc(s.name)}</td><td>${bodyTag(s.body)}</td>
+      <td class="num">${fmt(s.lat)}</td><td class="num">${fmt(s.lon)}</td>${KEYS.map(k => `<td class="num">${fmt(s[k])}</td>`).join("")}<td class="src">${s.source}</td></tr>`).join("")}</tbody>`;
+}
+function addUserSites(list) {
+  let next = Math.max(0, ...SITES.map(s => s.id)) + 1;
+  list.forEach(s => { s.id = next++; s.source = "user"; if (s.body === "Moon") ATMO.forEach(k => { s[k] = null; }); });
+  USER = USER.concat(list); store("paf-user-sites", USER); rebuildSites(); fillSiteSelect(); update();
+}
+function parseCSV(text) {
+  const rows = []; let row = [], cell = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += c; }
+    else if (c === '"') q = true;
+    else if (c === ",") { row.push(cell); cell = ""; }
+    else if (c === "\n" || c === "\r") { if (c === "\r" && text[i + 1] === "\n") i++; row.push(cell); rows.push(row); row = []; cell = ""; }
+    else cell += c;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(v => v.trim() !== ""));
+}
+
+/* ───────── methodology: worked example ───────── */
+function renderMethod() {
+  const nCat = CATALOG.filter(s => s.source === "catalog").length;
+  $("cat-text").innerHTML = `${nCat} named sites (landing sites, field analogs, craters, basins, volcanoes and polar regions) plus 6 synthetic vicinity points per site,
+    ${CATALOG.length.toLocaleString("en-US")} records in total. Values are approximate. Where not listed, UV, pressure, humidity (Mars) and temperature (Mars, Moon)
+    are derived from latitude and elevation.`;
+  const name = "Gale Crater (Curiosity)", i = SITES.findIndex(s => s.name === name && s.source === "catalog");
+  if (i < 0) { $("worked").innerHTML = ""; return; }
+  const s = SITES[i], lat = s.lat, h = s.elevation / 1000, c = Math.cos(lat * Math.PI / 180), al = Math.abs(lat);
+  const temp = -55 - 50 * (al / 90) ** 2 - 1.5 * h, uv = 40 * c ** 1.2 * (1 + .02 * h) + 2;
+  const hum = (.012 + .025 * (al / 90) ** 2) * Math.exp(-Math.max(h, 0) / 11.1), pres = .61 * Math.exp(-h / 11.1);
+  const nrm = state.norm[i], logged = k => state.logSet.has(k) ? " (log scale)" : "";
+  const steps = [
+    ["roughness", "Database value", "MOLA pulse-width roughness, HiRISE stereo DEM", "—"],
+    ["elevation", "Database value", "MOLA MEGDR topography of the crater floor", "—"],
+    ["slope", "Database value", "Mean slope from HRSC / MOLA DEM", "—"],
+    ["temperature", "Model T = −55 − 50·(|φ|/90)² − 1.5·h", "REMS (Curiosity) surface records", `−55 − 50·(${al.toFixed(1)}/90)² − 1.5·(${h.toFixed(1)}) = ${temp.toFixed(1)}`],
+    ["mineral", "Database value", "CheMin / APXS (Curiosity), CRISM: FeO + sulfates", "—"],
+    ["uv", "Model UV = 40·cos(φ)^1.2·(1 + 0.02·h) + 2", "REMS UV sensor", `40·${c.toFixed(3)}^1.2·(1 + 0.02·(${h.toFixed(1)})) + 2 = ${uv.toFixed(1)}`],
+    ["humidity", "Model q = (0.012 + 0.025·(|φ|/90)²)·e^(−max(h,0)/11.1)", "REMS humidity sensor", `(0.012 + 0.025·(${al.toFixed(1)}/90)²)·e^0 = ${hum.toFixed(4)}`],
+    ["pressure", "Model P = 0.61·e^(−h/11.1)", "REMS pressure sensor, Mars Climate Database", `0.61·e^(−(${h.toFixed(1)})/11.1) = ${pres.toFixed(3)}`],
+  ];
+  $("worked").innerHTML = `
+    <div class="sh"><h3>Worked example · ${esc(name)}</h3><span class="aside">${lat.toFixed(2)}°, ${s.lon.toFixed(2)}° · Mars</span></div>
+    <div class="steps">
+      <div class="step"><div class="n">STEP 1</div><div class="t">Locate the site</div><div class="d">Position and elevation from the database: φ = ${lat.toFixed(2)}°, h = ${h.toFixed(1)} km.</div></div>
+      <div class="step"><div class="n">STEP 2</div><div class="t">Read measured values</div><div class="d">Roughness, slope and mineralogy come from orbital and rover datasets.</div></div>
+      <div class="step"><div class="n">STEP 3</div><div class="t">Compute climate</div><div class="d">Temperature, UV, humidity and pressure follow from φ and h.</div></div>
+      <div class="step"><div class="n">STEP 4</div><div class="t">Scale to 0–1</div><div class="d">Min–max over the whole database; pressure and humidity on a log scale by default.</div></div>
+    </div>
+    <div class="tbl-wrap"><table><thead><tr><th>Parameter</th><th>Method</th><th>Data source</th><th>Calculation</th><th>Value</th><th>Unit</th><th>Normalised (0–1)</th></tr></thead>
+    <tbody>${steps.map(([k, m, src, calc]) => { const j = KEYS.indexOf(k);
+      return `<tr><td>${LABELS[k]}</td><td>${m}</td><td class="src">${src}</td><td class="calc">${calc}</td><td class="num">${fmt(s[k])}</td><td class="src">${UNITS[k]}</td>
+        <td>${nrm[j] === null ? "—" : bar(nrm[j])}<span class="src">${logged(k)}</span></td></tr>`; }).join("")}</tbody></table></div>
+    <p class="note" style="margin-top:10px">With these eight normalised values, Gale Crater is compared with every Earth site using the weights in the sidebar. Select it as the query to see its Earth analogs.</p>`;
+}
+
+/* ───────── tabs ───────── */
+function renderActive() {
+  const t = state.tab;
+  if (t === "results") renderResults();
+  else if (t === "globes") renderGlobes();
+  else if (t === "profiles") renderProfiles();
+  else if (t === "space") renderSpace();
+  else if (t === "db") renderDB();
+  else if (t === "method") renderMethod();
+}
+function setTab(t) {
+  state.tab = t;
+  document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === t)));
+  ["results","globes","profiles","space","db","method"].forEach(n => { $("p-" + n).hidden = n !== t; });
+  store("paf-tab", t);
+  renderActive();
+}
+
+/* ───────── wiring ───────── */
+function wire() {
+  document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tab)));
+  const side = document.querySelector(".side");
+  side.addEventListener("input", e => { if (e.target.type === "range") schedule(); });
+  side.addEventListener("change", e => {
+    const id = e.target.id;
+    if (id === "src-db" || id === "src-custom") { $("db-query").hidden = !$("src-db").checked; $("custom-query").hidden = $("src-db").checked; if (!$("src-db").checked) fillCustomDefaults(); }
+    if (id === "q-body") { fillSiteSelect(); fillCustomDefaults(); profPick = null; }
+    if (id === "q-catalog") fillSiteSelect();
+    if (id === "q-site") profPick = null;
+    schedule();
+  });
+  ["c-name","c-lat","c-lon"].forEach(id => $(id).addEventListener("input", schedule));
+  $("c-params").addEventListener("input", schedule);
+  $("globe-bodies").addEventListener("change", () => renderGlobes());
+  $("gsize").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return;
+    $("gsize").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", String(x === b))); state.globeH = +b.dataset.h; renderGlobes(); });
+  $("prof-pick").addEventListener("change", e => { const id = +e.target.dataset.pid; if (e.target.checked) profPick.add(id); else profPick.delete(id); renderProfiles(); });
+  $("diff-site").addEventListener("change", renderDiff);
+  $("db-search").addEventListener("input", () => { state.dbPage = 0; renderDB(); });
+  $("db-bodies").addEventListener("change", () => { state.dbPage = 0; renderDB(); });
+  $("db-synth").addEventListener("change", () => { state.dbPage = 0; renderDB(); });
+  $("db-prev").addEventListener("click", () => { state.dbPage--; renderDB(); });
+  $("db-next").addEventListener("click", () => { state.dbPage++; renderDB(); });
+  $("copy-res").addEventListener("click", () => {
+    const head = ["rank","name","body","score","cos","euclid","manhattan","coverage","axes","lat","lon"].concat(KEYS);
+    const q = v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v;
+    const lines = [head.join(",")].concat(state.res.map(r => [r.rank, r.site.name, r.site.body, r.score.toFixed(4), r.cos.toFixed(4), r.euclid.toFixed(4), r.manhattan.toFixed(4),
+      r.coverage.toFixed(3), r.axes, r.site.lat, r.site.lon].concat(KEYS.map(k => r.site[k] ?? "")).map(q).join(",")));
+    const text = lines.join("\n");
+    navigator.clipboard.writeText(text).then(() => { $("copy-status").textContent = `Copied ${state.res.length} rows.`; })
+      .catch(() => { $("copy-status").textContent = "Clipboard is not available here."; });
+  });
+  $("add-form").addEventListener("submit", e => {
+    e.preventDefault();
+    const name = $("a-name").value.trim(); if (!name) { $("add-status").textContent = "Enter a name for the site."; return; }
+    const s = { name, body: $("a-body").value, lat: parseFloat($("a-lat").value), lon: parseFloat($("a-lon").value) };
+    KEYS.forEach(k => { const v = parseFloat($("a-" + k).value); s[k] = isNum(v) ? v : null; });
+    addUserSites([s]); $("a-name").value = ""; $("add-status").textContent = `Added “${name}”.`;
+  });
+  $("csv-file").addEventListener("change", async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try {
+      const rows = parseCSV(await f.text()), head = rows[0].map(h => h.trim().toLowerCase());
+      const need = ["name","body"].concat(KEYS).filter(c => !head.includes(c));
+      if (need.length) throw new Error("Missing columns: " + need.join(", "));
+      const list = rows.slice(1).map(r => { const o = {}; head.forEach((h, i) => { o[h] = (r[i] ?? "").trim(); });
+        const s = { name: o.name, body: o.body, lat: parseFloat(o.lat), lon: parseFloat(o.lon) };
+        if (!BODIES.includes(s.body)) throw new Error(`Unknown body “${o.body}”. Use Earth, Mars or Moon.`);
+        KEYS.forEach(k => { const v = parseFloat(o[k]); s[k] = isNum(v) ? v : null; }); return s; });
+      addUserSites(list); $("csv-status").textContent = `Imported ${list.length} rows.`;
+    } catch (err) { $("csv-status").textContent = err.message; }
+    e.target.value = "";
+  });
+  $("clear-user").addEventListener("click", () => { USER = []; store("paf-user-sites", USER); rebuildSites(); fillSiteSelect(); update(); $("csv-status").textContent = "Removed sites added in this browser."; });
+}
+
+async function init() {
+  buildControls(); wire();
+  try {
+    const data = await (await fetch("data/sites.json")).json();
+    CATALOG = data.rows.map(r => Object.fromEntries(data.cols.map((c, i) => [c, r[i]])));
+  } catch (e) { $("meta").textContent = "The site catalog could not be loaded."; return; }
+  const saved = store("paf-user-sites"); USER = Array.isArray(saved) ? saved : [];
+  rebuildSites(); fillSiteSelect(); fillCustomDefaults();
+  compute(); renderSidebarState(); renderHeader();
+  const t = store("paf-tab"); setTab(["results","globes","profiles","space","db","method"].includes(t) ? t : "results");
+}
+init();
+</script>
